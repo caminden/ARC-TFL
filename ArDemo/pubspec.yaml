@@ -52,7 +52,7 @@ flutter:
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
   assets:
-  - assets/ssd_mobilenet_v1_1_metadata_1.tflite
+  - assets/ssd_mobilenet.tflite
   - assets/labels.txt
 
   # An image asset can refer to one or more resolution-specific "variants", see
