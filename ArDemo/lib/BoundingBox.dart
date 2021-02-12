@@ -1,0 +1,1 @@
+//bounding box is for the outline of the detected object

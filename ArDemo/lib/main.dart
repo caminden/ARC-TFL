@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 
 List<CameraDescription> cameras;
 
+//test to initialize camera used for app
 Future<void> main() async{
   WidgetsFlutterBinding.ensureInitialized();
   try{
@@ -15,6 +16,8 @@ Future<void> main() async{
   runApp(MyApp());
 }
 
+
+//routing information to know homepage is HomeScreen, passing the cameras available as a parameter
 class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
