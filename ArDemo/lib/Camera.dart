@@ -109,6 +109,5 @@ class _Camera extends State<Camera> {
       child: CameraPreview(controller),
     );
     // TODO: implement build
-    return Container();
   }
 }
