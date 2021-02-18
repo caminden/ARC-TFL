@@ -47,7 +47,6 @@ class _Camera extends State<Camera> {
         controller.startImageStream((CameraImage img) {
           if (!isDetecting) {
             isDetecting = true;
-            print(isDetecting);
             int startTime = new DateTime.now().millisecondsSinceEpoch;
 
             Tflite.detectObjectOnFrame(
@@ -67,7 +66,7 @@ class _Camera extends State<Camera> {
                 .then((recognitions) {
               int endTime = new DateTime.now().millisecondsSinceEpoch;
               print("Detection time took ${endTime - startTime}");
-
+              print(recognitions);
               widget.setRecognitions(recognitions, img.height, img.width);
 
               isDetecting = false;
