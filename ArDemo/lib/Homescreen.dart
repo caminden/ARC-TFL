@@ -29,6 +29,7 @@ class _HomeScreen extends State<HomeScreen> {
   int _imageHeight = 0; //height of camera view
   int _imageWidth = 0; //widgth of camera view
   String _model = ""; //the TensorFlow model chosen for the object detection
+  int view = 0;
 
   loadModel() async {
     String result;
@@ -48,6 +49,8 @@ class _HomeScreen extends State<HomeScreen> {
   onSelect(model) {
     setState(() {
       _model = model;
+      view = view == 0 ? 1 : 0;
+      //print("********************: " + view.toString());
     });
     loadModel();
   }
@@ -65,6 +68,8 @@ class _HomeScreen extends State<HomeScreen> {
     super.initState();
   }
 
+  void render(fn) => setState(fn);
+
   //basic homescreen, no functionality as of now
   @override
   Widget build(BuildContext context) {
@@ -74,52 +79,57 @@ class _HomeScreen extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Flutter ArCore/Tflite Demo"),
+        actions: <Widget>[IconButton(
+          icon: Icon(Icons.remove_circle_outline),
+          onPressed: (){setState(() {
+            _model = "";
+          });},
+        )],
       ),
       body: _model == ""
           ? Container()
-          : Stack(
-              children: [
-                Camera(widget.cameras, _model, setRecognitions),
-                BndBox(
-                    _recognitions == null ? [] : _recognitions,
-                    math.max(_imageHeight, _imageWidth),
-                    math.min(_imageHeight, _imageWidth),
-                    screen.height,
-                    screen.width,
-                    _model),
-                /*ArNode(
-                  _recognitions == null ? [] : _recognitions,
-                  _imageHeight,
-                  _imageWidth,
-                )*/
-              ],
-            ),
+          : view == 0
+              ? ArNode()//Container(child: Text("Home Page"),)
+              : Stack(
+                  children: [
+                    Camera(widget.cameras, _model, setRecognitions, screen),
+                    BndBox(
+                        _recognitions == null ? [] : _recognitions,
+                        math.max(_imageHeight, _imageWidth),
+                        math.min(_imageHeight, _imageWidth),
+                        screen.height,
+                        screen.width,
+                        _model),
+                        /*ArNode(
+                        _recognitions == null ? [] : _recognitions,
+                        _imageHeight,
+                        _imageWidth,
+                        ),*/
+                  ],
+                ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => onSelect("ssd"),
         child: Icon(Icons.photo_camera),
       ),
     );
   }
-
-  void _onArCoreViewCreated(ArCoreController controller) {
-    arCoreController = controller;
-
-    _addSphere(arCoreController);
-  }
-
-  Future _addSphere(ArCoreController controller) async {
-    final material = ArCoreMaterial(
-      color: Colors.yellow,
-      roughness: 1.0,
-    );
-    final sphere = ArCoreSphere(
-      materials: [material],
-      radius: 0.2,
-    );
-    final node = ArCoreNode(
-      shape: sphere,
-      position: vector.Vector3(0.0, 0, -3.0),
-    );
-    controller.addArCoreNode(node);
-  }
 }
+ /*
+Stack(
+                  children: [
+                    Camera(widget.cameras, _model, setRecognitions),
+                    BndBox(
+                        _recognitions == null ? [] : _recognitions,
+                        math.max(_imageHeight, _imageWidth),
+                        math.min(_imageHeight, _imageWidth),
+                        screen.height,
+                        screen.width,
+                        _model),
+                        /*ArNode(
+                        _recognitions == null ? [] : _recognitions,
+                        _imageHeight,
+                        _imageWidth,
+                        ),*/
+                  ],
+                )
+                */
