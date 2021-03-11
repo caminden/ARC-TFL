@@ -1,12 +1,9 @@
-import 'package:ArDemo/ArNode.dart';
-import 'package:ArDemo/BoundingBox.dart';
+import 'dart:io';
 import 'package:ArDemo/Camera.dart';
-import 'package:arcore_flutter_plugin/arcore_flutter_plugin.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:tflite/tflite.dart';
 import 'dart:math' as math;
-import 'package:vector_math/vector_math_64.dart' as vector;
 
 const String ssd = "SSDMobileNet";
 
@@ -14,6 +11,7 @@ class HomeScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
 
   HomeScreen(this.cameras);
+
   //stateful widget type to allow for dynamic changes
   @override
   State<StatefulWidget> createState() {
@@ -24,48 +22,32 @@ class HomeScreen extends StatefulWidget {
 
 //extention of stateful screen where widgets are placed
 class _HomeScreen extends State<HomeScreen> {
-  ArCoreController arCoreController;
-  List<dynamic> _recognitions; //
-  int _imageHeight = 0; //height of camera view
-  int _imageWidth = 0; //widgth of camera view
-  String _model = ""; //the TensorFlow model chosen for the object detection
   int view = 0;
-
-  loadModel() async {
-    String result;
-
-    //if model selected is SDD, load the corresponding model and its labels from assets
-    switch (_model) {
-      default:
-        result = await Tflite.loadModel(
-          labels: "assets/labels.txt",
-          model: "assets/ssd_mobilenet.tflite",
-        );
-        break;
-    }
-    print(result);
-  }
-
-  onSelect(model) {
-    setState(() {
-      _model = model;
-      view = view == 0 ? 1 : 0;
-      //print("********************: " + view.toString());
-    });
-    loadModel();
-  }
-
-  setRecognitions(recognitions, imgHeight, imgWidth) {
-    setState(() {
-      _recognitions = recognitions;
-      _imageHeight = imgHeight;
-      _imageWidth = imgWidth;
-    });
-  }
+  _Controller con;
+  CameraController controller;
+  XFile imageFile;
+  Offset offset = Offset(0, 100);
+  Offset imageOffset = Offset(0, 100);
+  Alignment imageAlign = Alignment(0, 0);
 
   @override
   void initState() {
     super.initState();
+    con = _Controller(this);
+    if (widget.cameras == null || widget.cameras.length < 1) {
+      print('No camera is found');
+    } else {
+      controller = new CameraController(
+        widget.cameras[0],
+        ResolutionPreset.high,
+      );
+      controller.initialize().then((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {});
+      });
+    }
   }
 
   void render(fn) => setState(fn);
@@ -75,61 +57,139 @@ class _HomeScreen extends State<HomeScreen> {
   Widget build(BuildContext context) {
     // TODO: implement build
     Size screen = MediaQuery.of(context).size;
-
     return Scaffold(
       appBar: AppBar(
         title: Text("Flutter ArCore/Tflite Demo"),
-        actions: <Widget>[IconButton(
-          icon: Icon(Icons.remove_circle_outline),
-          onPressed: (){setState(() {
-            _model = "";
-          });},
-        )],
+        actions: <Widget>[
+          IconButton(
+            icon: Icon(Icons.adb),
+            onPressed: () {
+              setState(() {
+                view == 0 ? view = 1 : view = 0;
+                offset = Offset(0, 100);
+                imageFile = null;
+              });
+            },
+          )
+        ],
       ),
-      body: _model == ""
+      body: view == 0
           ? Container()
-          : view == 0
-              ? ArNode()//Container(child: Text("Home Page"),)
-              : Stack(
-                  children: [
-                    Camera(widget.cameras, _model, setRecognitions, screen),
-                    BndBox(
-                        _recognitions == null ? [] : _recognitions,
-                        math.max(_imageHeight, _imageWidth),
-                        math.min(_imageHeight, _imageWidth),
-                        screen.height,
-                        screen.width,
-                        _model),
-                        /*ArNode(
-                        _recognitions == null ? [] : _recognitions,
-                        _imageHeight,
-                        _imageWidth,
-                        ),*/
-                  ],
+          : Stack(
+              children: <Widget>[
+                con.Camera(),
+                Positioned(
+                  top: offset.dy - 90,
+                  left: offset.dx,
+                  child: Draggable(
+                    childWhenDragging: Container(),
+                    child: Container(
+                        height: 110,
+                        width: 110,
+                        decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white))),
+                    feedback: Container(
+                        height: 110,
+                        width: 110,
+                        decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white))),
+                    onDragEnd: (drag) {
+                      setState(() {
+                        offset = drag.offset;
+                        print(drag.offset);
+                      });
+                    },
+                  ),
                 ),
+                imageFile != null
+                    ? Positioned(
+                        top: imageOffset.dy - 90,
+                        left: imageOffset.dx,
+                        child: Draggable(
+                            childWhenDragging: Container(),
+                            child: Container(
+                              clipBehavior: Clip.hardEdge,
+                              height: 110,
+                              width: 110,
+                              decoration: BoxDecoration(
+                                  image: DecorationImage(
+                                      scale: 1.75,
+                                      fit: BoxFit.none,
+                                      alignment: imageAlign,
+                                      image: FileImage(File(imageFile.path)))),
+                            ),
+                            feedback: Container(
+                              height: 110,
+                              width: 110,
+                              decoration: BoxDecoration(
+                                  image: DecorationImage(
+                                      scale: 1.75,
+                                      fit: BoxFit.none,
+                                      alignment: imageAlign,
+                                      image: FileImage(File(imageFile.path)))),
+                            ),
+                            onDragEnd: (drag) {
+                              setState(() {
+                                imageOffset = drag.offset;
+                                print(drag.offset);
+                              });
+                            }),
+                      )
+                    : Container(),
+              ],
+            ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => onSelect("ssd"),
+        onPressed: () async {
+          XFile image = await controller.takePicture();
+          setState(() {
+            imageAlign = con.normalize(offset.dx, offset.dy);
+            imageFile = image;
+            imageOffset = offset;
+            offset = Offset(0, 100);
+            print(imageAlign.x);
+          });
+        },
         child: Icon(Icons.photo_camera),
       ),
     );
   }
 }
- /*
-Stack(
-                  children: [
-                    Camera(widget.cameras, _model, setRecognitions),
-                    BndBox(
-                        _recognitions == null ? [] : _recognitions,
-                        math.max(_imageHeight, _imageWidth),
-                        math.min(_imageHeight, _imageWidth),
-                        screen.height,
-                        screen.width,
-                        _model),
-                        /*ArNode(
-                        _recognitions == null ? [] : _recognitions,
-                        _imageHeight,
-                        _imageWidth,
-                        ),*/
-                  ],
-                )
-                */
+
+class _Controller {
+  _HomeScreen _state;
+  _Controller(this._state);
+
+  Widget Camera() {
+    if (_state.controller == null || !_state.controller.value.isInitialized) {
+      return Container();
+    }
+
+    var tmp = MediaQuery.of(_state.context).size;
+    //print(tmp);
+    var screenH = math.max(tmp.height, tmp.width);
+    var screenW = math.min(tmp.height, tmp.width);
+    tmp = _state.controller.value.previewSize;
+    var previewH = math.max(tmp.height, tmp.width);
+    var previewW = math.min(tmp.height, tmp.width);
+    var screenRatio = screenH / screenW;
+    var previewRatio = previewH / previewW;
+
+    return OverflowBox(
+      maxHeight:
+          screenRatio > previewRatio ? screenH : screenW / previewW * previewH,
+      maxWidth:
+          screenRatio > previewRatio ? screenH / previewH * previewW : screenW,
+      child: CameraPreview(_state.controller),
+    );
+  }
+
+  Alignment normalize(x, y) {
+    x = (x - 125) / 125;
+    x = x.toDouble();
+    print("X = " + x.toString());
+    y = (y - 350) / 350;
+    y = y.toDouble();
+    print("Y = " + y.toString());
+    return Alignment(x, y);
+  }
+}
