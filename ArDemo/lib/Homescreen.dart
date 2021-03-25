@@ -5,11 +5,7 @@ import 'package:arcore_flutter_plugin/arcore_flutter_plugin.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:screenshot/screenshot.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
-
-import 'dart:math' as math;
+import 'package:vector_math/vector_math_64.dart' as vector;
 
 const String ssd = "SSDMobileNet";
 
@@ -28,25 +24,28 @@ class HomeScreen extends StatefulWidget {
 
 //extention of stateful screen where widgets are placed
 class _HomeScreen extends State<HomeScreen> {
-  int view = 0;
+  int view;
   _Controller con;
   CameraController controller;
-  ScreenshotController screenshotController = ScreenshotController();
+  ArCoreController arController;
+  //List<CameraDescription> cameras;
+
   XFile ximageFile; //for camera FileImage(File(imageFile.path))))
   Offset offset = Offset(0, 100);
   Offset imageOffset = Offset(0, 100);
   Alignment imageAlign = Alignment(0, 0);
-  static GlobalKey previewContainer = new GlobalKey();
+
 
   @override
   void initState() {
     super.initState();
+    view = 2;
     con = _Controller(this);
     if (widget.cameras == null || widget.cameras.length < 1) {
       print('No camera is found');
     } else {
       controller = new CameraController(
-        widget.cameras[0],
+        widget.cameras.first,
         ResolutionPreset.high,
       );
       controller.initialize().then((_) {
@@ -58,123 +57,46 @@ class _HomeScreen extends State<HomeScreen> {
     }
   }
 
-  void render(fn) => setState(fn);
-
-  @override
-  void dispose() {
-    // TODO: implement dispose
-    con.arController.dispose();
-    super.dispose();
-  }
+  //void render(fn) => setState(fn);
 
   //basic homescreen, no functionality as of now
   @override
   Widget build(BuildContext context) {
     // TODO: implement build
-    Size screen = MediaQuery.of(context).size;
-    return RepaintBoundary(
-      key: previewContainer,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text("Flutter ArCore/Tflite Demo"),
-          actions: <Widget>[
-            IconButton(
-              icon: Icon(Icons.adb),
-              onPressed: () {
-                setState(() {
-                  view == 0 ? view = 1 : view = 0;
-                  offset = Offset(0, 100);
-                  //imageFile = null;
-                });
-              },
-            )
-          ],
-        ),
-        body: view == 0
-            ? Container()
-            : Stack(
-                children: <Widget>[
-                  CameraPreview(controller), //to display the camera
-                  Positioned(
-                    top: offset.dy - 90,
-                    left: offset.dx,
-                    child: Draggable(
-                      childWhenDragging: Container(),
-                      child: Container(
-                          height: 150,
-                          width: 150,
-                          decoration: BoxDecoration(
-                              border: Border.all(color: Colors.blue))),
-                      feedback: Container(
-                          height: 150,
-                          width: 150,
-                          decoration: BoxDecoration(
-                              border: Border.all(color: Colors.blue))),
-                      onDragEnd: (drag) {
-                        setState(() {
-                          offset = drag.offset;
-                          Alignment n = con.normalize(drag.offset.dx, drag.offset.dy);
-                          print(drag.offset);
-                        });
-                      },
-                    ),
-                  ),
-                  ximageFile == null ? Container() : 
-                  Positioned(
-                    top: imageOffset.dy - 90,
-                    left: imageOffset.dx,
-                    child: Draggable(
-                        childWhenDragging: Container(),
-                        child: Container(
-                          clipBehavior: Clip.hardEdge,
-                          height: 150,
-                          width: 150,
-                          decoration: BoxDecoration(
-                              image: DecorationImage(
-                                  scale: 2,
-                                  fit: BoxFit.none,
-                                  alignment: imageAlign,
-                                  image: FileImage(File(ximageFile.path)))),
-                        ),
-                        feedback: Container(
-                          height: 150,
-                          width: 150,
-                          decoration: BoxDecoration(
-                              image: DecorationImage(
-                                  scale: 2,
-                                  fit: BoxFit.none,
-                                  alignment: imageAlign,
-                                  image: FileImage(File(ximageFile.path)))),
-                        ),
-                        onDragEnd: (drag) {
-                          setState(() {
-                            imageOffset = drag.offset;
-                            print(drag.offset);
-                          });
-                        }),
-                  )
-                ],
-              ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () async {
-            controller.takePicture().then((XFile image) {
-              print(
-                  "==============================================================");
-              print(
-                  "========================Picure Taken =========================");
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Flutter ArCore/Tflite Demo"),
+        actions: <Widget>[
+          IconButton(
+            icon: Icon(Icons.adb),
+            onPressed: () {
               setState(() {
-                ximageFile = image;
-                imageAlign = con.normalize(offset.dx, offset.dy);
-                imageOffset = offset;
+                view == 0 ? view = 1 : view = 0;
                 offset = Offset(0, 100);
+                ximageFile = null;
               });
-              print(File(ximageFile.path).toString());
-              final result =
-                  ImageGallerySaver.saveFile(File(ximageFile.path).toString());
+            },
+          )
+        ],
+      ),
+      body: con.chooseBody(view),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          controller.takePicture().then((XFile image) async {
+            print(
+                "==============================================================");
+            print(
+                "========================Picure Taken =========================");
+            con.bytes = await image.readAsBytes();
+            setState(() {
+              ximageFile = image;
+              imageAlign = con.normalize(offset.dx, offset.dy);
+              imageOffset = offset;
+              offset = Offset(0, 100);
             });
-          },
-          child: Icon(Icons.photo_camera),
-        ),
+          });
+        },
+        child: Icon(Icons.photo_camera),
       ),
     );
   }
@@ -183,75 +105,117 @@ class _HomeScreen extends State<HomeScreen> {
 class _Controller {
   _HomeScreen _state;
   _Controller(this._state);
+
   Map<String, ArCoreAugmentedImage> augmentedImageMap = Map();
-  ArCoreController arController;
   Map<String, Uint8List> imageMap = Map();
 
-  Widget Camera() {
+  Uint8List bytes;
+
+  Widget chooseBody(int view) {
+    if (view == 0) {
+      return camera();
+    } else if (view == 1) {
+      return arView();
+    } else
+      return Container();
+  }
+
+  Widget camera() {
     if (_state.controller == null || !_state.controller.value.isInitialized) {
       return Container(child: Text("Sample text"));
     }
 
-    var tmp = MediaQuery.of(_state.context).size;
-    //print(tmp);
-    var screenH = math.max(tmp.height, tmp.width);
-    var screenW = math.min(tmp.height, tmp.width);
-    tmp = _state.controller.value.previewSize;
-    var previewH = math.max(tmp.height, tmp.width);
-    var previewW = math.min(tmp.height, tmp.width);
-    var screenRatio = screenH / screenW;
-    var previewRatio = previewH / previewW;
-
-    return OverflowBox(
-      maxHeight:
-          screenRatio > previewRatio ? screenH : screenW / previewW * previewH,
-      maxWidth:
-          screenRatio > previewRatio ? screenH / previewH * previewW : screenW,
-      child: ArCoreView(
-          onArCoreViewCreated: _arCoreView,
-          type: ArCoreViewType.AUGMENTEDIMAGES),
-      //CameraPreview(_state.controller),
+    return Stack(
+      children: <Widget>[
+        CameraPreview(_state.controller), //to display the camera
+        Positioned(
+          top: _state.offset.dy - 90,
+          left: _state.offset.dx,
+          child: Draggable(
+            childWhenDragging: Container(),
+            child: Container(
+                height: 150,
+                width: 150,
+                decoration:
+                    BoxDecoration(border: Border.all(color: Colors.blue))),
+            feedback: Container(
+                height: 150,
+                width: 150,
+                decoration:
+                    BoxDecoration(border: Border.all(color: Colors.blue))),
+            onDragEnd: (drag) {
+              _state.setState(() {
+                _state.offset = drag.offset;
+                Alignment n = normalize(drag.offset.dx, drag.offset.dy);
+                print(drag.offset);
+              });
+            },
+          ),
+        ),
+        _state.ximageFile == null
+            ? Container()
+            : Positioned(
+                top: _state.imageOffset.dy - 90,
+                left: _state.imageOffset.dx,
+                child: Draggable(
+                    childWhenDragging: Container(),
+                    child: Container(
+                      clipBehavior: Clip.hardEdge,
+                      height: 150,
+                      width: 150,
+                      decoration: BoxDecoration(
+                          image: DecorationImage(
+                              scale: 2,
+                              fit: BoxFit.none,
+                              alignment: _state.imageAlign,
+                              image: FileImage(File(_state.ximageFile.path)))),
+                    ),
+                    feedback: Container(
+                      height: 150,
+                      width: 150,
+                      decoration: BoxDecoration(
+                          image: DecorationImage(
+                              scale: 2,
+                              fit: BoxFit.none,
+                              alignment: _state.imageAlign,
+                              image: FileImage(File(_state.ximageFile.path)))),
+                    ),
+                    onDragEnd: (drag) {
+                      _state.setState(() {
+                        _state.imageOffset = drag.offset;
+                        print(drag.offset);
+                      });
+                    }),
+              )
+      ],
     );
+  }
+
+  Widget arView() {
+    return ArCoreView(onArCoreViewCreated: _arCoreView);
   }
 
   _arCoreView(ArCoreController controller) {
-    arController = controller;
-    //controller.onTrackingImage = _handleTracking;
-    //loadImages();
-  }
-  /*
-  loadImages() async {
-    if(_state.imageFile != null){
-      imageMap["${_state.imageFile.name}"] = await _state.imageFile.readAsBytes();
-      arController.loadMultipleAugmentedImage(bytesMap: imageMap);
-    }
+    _state.arController = controller;
+    _addCube(_state.arController);
   }
 
-  _handleTracking(ArCoreAugmentedImage augImage){
-    if(!augmentedImageMap.containsKey(augImage.name)){
-      augmentedImageMap[augImage.name] = augImage;
-      _addSphere(augImage, augImage.name);
-    }
-  }
-
-  Future _addSphere(ArCoreAugmentedImage augmentedImage, String imgName) async {
+  void _addCube(ArCoreController controller) {
     final material = ArCoreMaterial(
-      color: Color.fromARGB(155, 66, 134, 244),   
+      color: Color.fromARGB(120, 66, 134, 244),
+      textureBytes: bytes,
       metallic: 1.0,
     );
-
-    final sphere = ArCoreSphere(
+    final cube = ArCoreCube(
       materials: [material],
-      radius: augmentedImage.extentX / 2,
+      size: vector.Vector3(0.5, 0.5, 0.5),
     );
-
     final node = ArCoreNode(
-      shape: sphere,
+      shape: cube,
+      position: vector.Vector3(-0.5, 0.5, -3.5),
     );
-
-    arController.addArCoreNodeToAugmentedImage(node, augmentedImage.index);
+    controller.addArCoreNode(node);
   }
-  */
 
   Alignment normalize(x, y) {
     x = (x - 100) / 100;
@@ -263,36 +227,3 @@ class _Controller {
     return Alignment(x, y);
   }
 }
-
-/* this is to display an image at a certain position, also draggable
-
-*/
-
-//this is to take a picture
-/*
-screenshotController
-                .capture(delay: Duration(milliseconds: 20))
-                .then((Uint8List image) async {
-              print(
-                  "==============================================================");
-              print(
-                  "========================Picure Taken =========================");
-              setState(() {
-                imageFile = image;
-                imageAlign = con.normalize(offset.dx, offset.dy);
-                imageOffset = offset;
-                offset = Offset(0, 100);
-                //print(imageAlign.x);
-              });
-              final result = await ImageGallerySaver.saveImage(imageFile);
-            });     
-*/
-
-/*
-RenderRepaintBoundary boundary =
-                previewContainer.currentContext.findRenderObject();
-            ui.Image image = await boundary.toImage();
-            ByteData bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-            Uint8List imageByteList = bytes.buffer.asUint8List();
-            final result = await ImageGallerySaver.saveImage(imageByteList);
-*/
