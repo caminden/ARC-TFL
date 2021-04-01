@@ -35,16 +35,25 @@ class _ArScreen extends State<ArScreen>{
   void _addCube(ArCoreController controller) async {
     final material = ArCoreMaterial(
       color: Color.fromARGB(120, 66, 134, 244),
-      textureBytes: widget.bytes,
+      //textureBytes: widget.bytes,
       metallic: 1.0,
     );
     final cube = ArCoreCube(
       materials: [material],
       size: vector.Vector3(0.5, 0.5, 0.5),
     );
+    final sphere = ArCoreSphere(
+      materials: [material],
+      radius: 10,
+      
+    );
+
+    final image = ArCoreImage(bytes: widget.bytes, height: 100, width: 100);
     final node = ArCoreNode(
-      shape: cube,
-      position: vector.Vector3(-0.5, 0.5, -3.5),
+      image: image,
+      shape: sphere,
+      position: vector.Vector3(3, 3, 3),
+      scale: vector.Vector3(1.5, 1.5, 1.5),
     );
 
     controller.addArCoreNode(node);

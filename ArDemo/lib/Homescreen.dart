@@ -39,7 +39,7 @@ class _HomeScreen extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    view = 2;
+    view = 0;
     con = _Controller(this);
     if (widget.cameras == null || widget.cameras.length < 1) {
       print('No camera is found');
@@ -71,7 +71,7 @@ class _HomeScreen extends State<HomeScreen> {
             icon: Icon(Icons.adb),
             onPressed: () {
               setState(() {
-                view == 0 ? view = 1 : view = 0;
+                view == 1 ? view = 2 : view = 1;
                 offset = Offset(0, 100);
                 ximageFile = null;
               });
@@ -210,11 +210,37 @@ class _Controller {
       materials: [material],
       size: vector.Vector3(0.5, 0.5, 0.5),
     );
-    final node = ArCoreNode(
-      shape: cube,
-      position: vector.Vector3(-0.5, 0.5, -3.5),
+    final sphere = ArCoreSphere(
+      materials: [material],
+      radius: 1,
+      
     );
+    final image = ArCoreImage(bytes: bytes, height: 400, width: 400);
+    final node = ArCoreNode(
+      rotation: vector.Vector4(0, 0, 90, -90),
+      image: image,                       //node front
+      position: vector.Vector3(-0.25, 0, -0.5),
+    );
+    final node1 = ArCoreNode(
+      rotation: vector.Vector4(0, 0, 90, 90),
+      image: image,                       //node1 back
+      position: vector.Vector3(0.4, 0, 0.15),
+    );
+    final node2 = ArCoreNode(
+      rotation: vector.Vector4(90, 90, 90, 90),
+      image: image,                     //node2 right
+      position: vector.Vector3(0.4, 0, -0.5),
+    );
+    final node3 = ArCoreNode(
+      rotation: vector.Vector4(90, 90, -90, -90),
+      image: image,                     //node3 left
+      position: vector.Vector3(-0.25, 0, 0.15),
+    );
+
     controller.addArCoreNode(node);
+    controller.addArCoreNode(node1);
+    controller.addArCoreNode(node2);
+    controller.addArCoreNode(node3);
   }
 
   Alignment normalize(x, y) {
