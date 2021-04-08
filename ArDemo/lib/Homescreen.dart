@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
+import 'package:tflite/tflite.dart';
 
 const String ssd = "SSDMobileNet";
 
@@ -27,7 +28,6 @@ class _HomeScreen extends State<HomeScreen> {
   int view;
   _Controller con;
   CameraController controller;
-  ArCoreController arController;
   //List<CameraDescription> cameras;
 
   //variables for making cropped draggable
@@ -36,12 +36,14 @@ class _HomeScreen extends State<HomeScreen> {
   //Offset imageOffset = Offset(0, 100);
   //Alignment imageAlign = Alignment(0, 0);
 
-
   @override
   void initState() {
     super.initState();
     view = 0;
     con = _Controller(this);
+    print("Start init");
+    loadModel();
+
     if (widget.cameras == null || widget.cameras.length < 1) {
       print('No camera is found');
     } else {
@@ -58,6 +60,12 @@ class _HomeScreen extends State<HomeScreen> {
     }
   }
 
+  loadModel() async {
+    String model = await Tflite.loadModel(
+        model: "assets/ssd_mobilenet.tflite", labels: "assets/labels.txt");
+    print("Model loaded, returned $model");
+  }
+
   //void render(fn) => setState(fn);
 
   //basic homescreen, no functionality as of now
@@ -67,41 +75,57 @@ class _HomeScreen extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Flutter ArCore/Tflite Demo"),
-        actions: view < 4 ? [Container()] : <Widget>[
-          IconButton(
-            icon: Icon(Icons.adb),
-            onPressed: () {
-              setState(() {
-                view == 4 ? view = 5 : view = 4;
-                //offset = Offset(0, 100);
-                //ximageFile = null;
-              });
-            },
-          )
-        ],
+        actions: view < 4
+            ? [Container()]
+            : <Widget>[
+                IconButton(
+                  icon: Icon(Icons.adb),
+                  onPressed: () {
+                    setState(() {
+                      view == 4 ? view = 5 : view = 4;
+                      //offset = Offset(0, 100);
+                      //ximageFile = null;
+                    });
+                  },
+                )
+              ],
       ),
       body: con.chooseBody(view),
-      floatingActionButton: view < 4 ? FloatingActionButton(
-        onPressed: () async {
-          controller.takePicture().then((XFile image) async {
-            print(
-                "==============================================================");
-            print(
-                "========================Picure Taken =========================");
-            Uint8List bytes = await image.readAsBytes();
-            con.bytes.add(bytes);
-            setState(() {
-              //ximageFile.add(image);
-              view+=1;
-              print(view);
-              //imageAlign = con.normalize(offset.dx, offset.dy);
-              //imageOffset = offset;
-              //offset = Offset(0, 100);
-            });
-          });
-        },
-        child: Icon(Icons.photo_camera),
-      ) : Container(),
+      floatingActionButton: view < 4
+          ? FloatingActionButton(
+              onPressed: () async {
+                controller.takePicture().then((XFile image) async {
+                  print(
+                      "==============================================================");
+                  print(
+                      "========================Picure Taken =========================");
+                  Uint8List bytes = await image.readAsBytes();
+                  con.bytes.add(bytes);
+                  print("bytes captured, start tflite");
+                  List<dynamic> recogs =
+                      await Tflite.detectObjectOnImage(path: image.path);
+                  List<dynamic> objects = [];
+                  recogs.map((e) {
+                    var r = e["detectedClass"];
+                    objects.add(r);
+                    //print(r.toString());
+                  }).toList();
+                  con.imageRecognitions.add(objects);
+                  print("View " + view.toString() + " has " + con.imageRecognitions.elementAt(view).toString() + " recognitions");
+                  //con.recognitions.add(recogs.elementAt(0));
+                  setState(() {
+                    //ximageFile.add(image);
+                    view += 1;
+                    print(view);
+                    //imageAlign = con.normalize(offset.dx, offset.dy);
+                    //imageOffset = offset;
+                    //offset = Offset(0, 100);
+                  });
+                });
+              },
+              child: Icon(Icons.photo_camera),
+            )
+          : Container(),
     );
   }
 }
@@ -110,10 +134,9 @@ class _Controller {
   _HomeScreen _state;
   _Controller(this._state);
 
-  Map<String, ArCoreAugmentedImage> augmentedImageMap = Map();
-  Map<String, Uint8List> imageMap = Map();
-
   List<Uint8List> bytes = [];
+  List<List<dynamic>> imageRecognitions = [];
+  ArCoreController arController;
 
   Widget chooseBody(int view) {
     if (view < 4) {
@@ -135,10 +158,9 @@ class _Controller {
       children: <Widget>[
         CameraPreview(_state.controller), //to display the camera
         Positioned(
-          top: _state.offset.dy - 90,
-          left: _state.offset.dx,
-          child: Text("Picture " + view.toString() + " of 4")
-        ),
+            top: _state.offset.dy - 90,
+            left: _state.offset.dx,
+            child: Text("Picture " + view.toString() + " of 4", style: TextStyle(fontSize: 20, color: Colors.pink),)),
         /*_state.ximageFile == null
             ? Container()
             : Positioned(
@@ -179,61 +201,87 @@ class _Controller {
   }
 
   Widget arView() {
-    return ArCoreView(onArCoreViewCreated: _arCoreView);
+    return ArCoreView(
+      onArCoreViewCreated: _arCoreView,
+      enableTapRecognizer: true,
+    );
   }
 
   _arCoreView(ArCoreController controller) {
-    _state.arController = controller;
-    _displayImage(_state.arController);
+    arController = controller;
+    arController.onNodeTap = (name) => onTapHandler(name);
+    arController.onPlaneTap = _displayImage;
   }
 
-  void _displayImage(ArCoreController controller) {
-    /*final material = ArCoreMaterial(
+  void onTapHandler(name) {
+    print("===========================TAP===============================");
+    showDialog(
+        context: _state.context,
+        builder: (BuildContext context) => AlertDialog(
+              content: Text("node tapped with $name"),
+            ));
+  }
+
+  void _displayImage(List<ArCoreHitTestResult> hits) {
+    print("===========================HIT===============================");
+    final hit = hits.first;
+    
+    /*inal material = ArCoreMaterial(
       color: Color.fromARGB(120, 66, 134, 244),
-      textureBytes: bytes.elementAt(1),
+      roughness: 1,
       metallic: 1.0,
-    );
-    final cube = ArCoreCube(
-      materials: [material],
-      size: vector.Vector3(0.5, 0.5, 0.5),
     );
     final sphere = ArCoreSphere(
       materials: [material],
       radius: 1,
-      
     );*/
 
-    final image = ArCoreImage(bytes: bytes.elementAt(0), height: 800, width: 800);  //front
-    final image2 = ArCoreImage(bytes: bytes.elementAt(1), height: 800, width: 800); //right
-    final image3 = ArCoreImage(bytes: bytes.elementAt(2), height: 800, width: 800);  //back
-    final image4 = ArCoreImage(bytes: bytes.elementAt(3), height: 800, width: 800);  //left
+    final image =
+        ArCoreImage(bytes: bytes.elementAt(0), height: 800, width: 800); //front
+    final image2 =
+        ArCoreImage(bytes: bytes.elementAt(1), height: 800, width: 800); //right
+    final image3 =
+        ArCoreImage(bytes: bytes.elementAt(2), height: 800, width: 800); //back
+    final image4 =
+        ArCoreImage(bytes: bytes.elementAt(3), height: 800, width: 800); //left
 
+    /*final node5 = ArCoreRotatingNode(
+        shape: sphere,
+        rotation: vector.Vector4(0, 0, 90, -90),
+        name: imageRecognitions.elementAt(0).toString(),
+        degreesPerSecond: 1,
+        position: hit.pose.translation
+        );*/
 
     final node = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, -90),
-      image: image,                       //node front
-      position: vector.Vector3(-0.5, 0, -1),
+      image: image, //node front
+      name: imageRecognitions.elementAt(0).toString(),
+      position: hit.pose.translation + vector.Vector3(-0.5, 1, -1),
     );
     final node1 = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, 90),
-      image: image3,                       //node1 back
-      position: vector.Vector3(0.8, 0, 0.30),
+      image: image3, //node1 back
+      name: imageRecognitions.elementAt(2).toString(),
+      position: hit.pose.translation + vector.Vector3(0.8, 1, 0.30),
     );
     final node2 = ArCoreNode(
       rotation: vector.Vector4(90, 90, 90, 90),
-      image: image2,                     //node2 right
-      position: vector.Vector3(0.8, 0, -1),
+      image: image2, //node2 right
+      name: imageRecognitions.elementAt(1).toString(),
+      position: hit.pose.translation + vector.Vector3(0.8, 1, -1),
     );
     final node3 = ArCoreNode(
+      name: imageRecognitions.elementAt(3).toString(),
       rotation: vector.Vector4(90, 90, -90, -90),
-      image: image4,                     //node3 left
-      position: vector.Vector3(-0.5, 0, 0.30),
+      image: image4, //node3 left
+      position: hit.pose.translation + vector.Vector3(-0.5, 1, 0.30),
     );
 
-    controller.addArCoreNode(node);
-    controller.addArCoreNode(node1);
-    controller.addArCoreNode(node2);
-    controller.addArCoreNode(node3);
+    arController.addArCoreNode(node);
+    arController.addArCoreNode(node1);
+    arController.addArCoreNode(node2);
+    arController.addArCoreNode(node3);
   }
 
   Alignment normalize(x, y) {
