@@ -30,10 +30,11 @@ class _HomeScreen extends State<HomeScreen> {
   ArCoreController arController;
   //List<CameraDescription> cameras;
 
-  XFile ximageFile; //for camera FileImage(File(imageFile.path))))
+  //variables for making cropped draggable
+  //List<XFile> ximageFile = []; //for camera FileImage(File(imageFile.path))))
   Offset offset = Offset(0, 100);
-  Offset imageOffset = Offset(0, 100);
-  Alignment imageAlign = Alignment(0, 0);
+  //Offset imageOffset = Offset(0, 100);
+  //Alignment imageAlign = Alignment(0, 0);
 
 
   @override
@@ -66,38 +67,41 @@ class _HomeScreen extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Flutter ArCore/Tflite Demo"),
-        actions: <Widget>[
+        actions: view < 4 ? [Container()] : <Widget>[
           IconButton(
             icon: Icon(Icons.adb),
             onPressed: () {
               setState(() {
-                view == 1 ? view = 2 : view = 1;
-                offset = Offset(0, 100);
-                ximageFile = null;
+                view == 4 ? view = 5 : view = 4;
+                //offset = Offset(0, 100);
+                //ximageFile = null;
               });
             },
           )
         ],
       ),
       body: con.chooseBody(view),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: view < 4 ? FloatingActionButton(
         onPressed: () async {
           controller.takePicture().then((XFile image) async {
             print(
                 "==============================================================");
             print(
                 "========================Picure Taken =========================");
-            con.bytes = await image.readAsBytes();
+            Uint8List bytes = await image.readAsBytes();
+            con.bytes.add(bytes);
             setState(() {
-              ximageFile = image;
-              imageAlign = con.normalize(offset.dx, offset.dy);
-              imageOffset = offset;
-              offset = Offset(0, 100);
+              //ximageFile.add(image);
+              view+=1;
+              print(view);
+              //imageAlign = con.normalize(offset.dx, offset.dy);
+              //imageOffset = offset;
+              //offset = Offset(0, 100);
             });
           });
         },
         child: Icon(Icons.photo_camera),
-      ),
+      ) : Container(),
     );
   }
 }
@@ -109,18 +113,20 @@ class _Controller {
   Map<String, ArCoreAugmentedImage> augmentedImageMap = Map();
   Map<String, Uint8List> imageMap = Map();
 
-  Uint8List bytes;
+  List<Uint8List> bytes = [];
 
   Widget chooseBody(int view) {
-    if (view == 0) {
-      return camera();
-    } else if (view == 1) {
+    if (view < 4) {
+      return camera(view);
+    } else if (view == 4) {
       return arView();
     } else
-      return Container();
+      return Container(
+        child: Text("Paused"),
+      );
   }
 
-  Widget camera() {
+  Widget camera(int view) {
     if (_state.controller == null || !_state.controller.value.isInitialized) {
       return Container(child: Text("Sample text"));
     }
@@ -131,28 +137,9 @@ class _Controller {
         Positioned(
           top: _state.offset.dy - 90,
           left: _state.offset.dx,
-          child: Draggable(
-            childWhenDragging: Container(),
-            child: Container(
-                height: 150,
-                width: 150,
-                decoration:
-                    BoxDecoration(border: Border.all(color: Colors.blue))),
-            feedback: Container(
-                height: 150,
-                width: 150,
-                decoration:
-                    BoxDecoration(border: Border.all(color: Colors.blue))),
-            onDragEnd: (drag) {
-              _state.setState(() {
-                _state.offset = drag.offset;
-                Alignment n = normalize(drag.offset.dx, drag.offset.dy);
-                print(drag.offset);
-              });
-            },
-          ),
+          child: Text("Picture " + view.toString() + " of 4")
         ),
-        _state.ximageFile == null
+        /*_state.ximageFile == null
             ? Container()
             : Positioned(
                 top: _state.imageOffset.dy - 90,
@@ -186,7 +173,7 @@ class _Controller {
                         print(drag.offset);
                       });
                     }),
-              )
+              )*/
       ],
     );
   }
@@ -197,13 +184,13 @@ class _Controller {
 
   _arCoreView(ArCoreController controller) {
     _state.arController = controller;
-    _addCube(_state.arController);
+    _displayImage(_state.arController);
   }
 
-  void _addCube(ArCoreController controller) {
-    final material = ArCoreMaterial(
+  void _displayImage(ArCoreController controller) {
+    /*final material = ArCoreMaterial(
       color: Color.fromARGB(120, 66, 134, 244),
-      textureBytes: bytes,
+      textureBytes: bytes.elementAt(1),
       metallic: 1.0,
     );
     final cube = ArCoreCube(
@@ -214,27 +201,33 @@ class _Controller {
       materials: [material],
       radius: 1,
       
-    );
-    final image = ArCoreImage(bytes: bytes, height: 400, width: 400);
+    );*/
+
+    final image = ArCoreImage(bytes: bytes.elementAt(0), height: 800, width: 800);  //front
+    final image2 = ArCoreImage(bytes: bytes.elementAt(1), height: 800, width: 800); //right
+    final image3 = ArCoreImage(bytes: bytes.elementAt(2), height: 800, width: 800);  //back
+    final image4 = ArCoreImage(bytes: bytes.elementAt(3), height: 800, width: 800);  //left
+
+
     final node = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, -90),
       image: image,                       //node front
-      position: vector.Vector3(-0.25, 0, -0.5),
+      position: vector.Vector3(-0.5, 0, -1),
     );
     final node1 = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, 90),
-      image: image,                       //node1 back
-      position: vector.Vector3(0.4, 0, 0.15),
+      image: image3,                       //node1 back
+      position: vector.Vector3(0.8, 0, 0.30),
     );
     final node2 = ArCoreNode(
       rotation: vector.Vector4(90, 90, 90, 90),
-      image: image,                     //node2 right
-      position: vector.Vector3(0.4, 0, -0.5),
+      image: image2,                     //node2 right
+      position: vector.Vector3(0.8, 0, -1),
     );
     final node3 = ArCoreNode(
       rotation: vector.Vector4(90, 90, -90, -90),
-      image: image,                     //node3 left
-      position: vector.Vector3(-0.25, 0, 0.15),
+      image: image4,                     //node3 left
+      position: vector.Vector3(-0.5, 0, 0.30),
     );
 
     controller.addArCoreNode(node);
