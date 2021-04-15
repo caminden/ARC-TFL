@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
-//import 'package:ArDemo/Camera.dart';
 import 'package:arcore_flutter_plugin/arcore_flutter_plugin.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
 import 'package:tflite/tflite.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'models/picture.dart';
 
 const String ssd = "SSDMobileNet";
 
@@ -28,20 +30,14 @@ class _HomeScreen extends State<HomeScreen> {
   int view;
   _Controller con;
   CameraController controller;
-  //List<CameraDescription> cameras;
-
-  //variables for making cropped draggable
-  //List<XFile> ximageFile = []; //for camera FileImage(File(imageFile.path))))
   Offset offset = Offset(0, 100);
-  //Offset imageOffset = Offset(0, 100);
-  //Alignment imageAlign = Alignment(0, 0);
 
   @override
   void initState() {
     super.initState();
     view = 0;
     con = _Controller(this);
-    print("Start init");
+
     loadModel();
 
     if (widget.cameras == null || widget.cameras.length < 1) {
@@ -60,13 +56,18 @@ class _HomeScreen extends State<HomeScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    controller?.dispose();
+    con.arController?.dispose();
+    super.dispose();
+  }
+
   loadModel() async {
     String model = await Tflite.loadModel(
         model: "assets/ssd_mobilenet.tflite", labels: "assets/labels.txt");
     print("Model loaded, returned $model");
   }
-
-  //void render(fn) => setState(fn);
 
   //basic homescreen, no functionality as of now
   @override
@@ -74,20 +75,27 @@ class _HomeScreen extends State<HomeScreen> {
     // TODO: implement build
     return Scaffold(
       appBar: AppBar(
-        title: Text("Flutter ArCore/Tflite Demo"),
+        title: Text("ARC&TFL"),
         actions: view < 4
             ? [Container()]
             : <Widget>[
-                IconButton(
-                  icon: Icon(Icons.adb),
-                  onPressed: () {
-                    setState(() {
-                      view == 4 ? view = 5 : view = 4;
-                      //offset = Offset(0, 100);
-                      //ximageFile = null;
-                    });
-                  },
-                )
+                view == 4
+                    ? IconButton(
+                        icon: Icon(Icons.play_arrow_rounded),
+                        onPressed: () {
+                          setState(() {
+                            view = 5;
+                          });
+                        },
+                      )
+                    : IconButton(
+                        icon: Icon(Icons.pause),
+                        onPressed: () {
+                          setState(() {
+                            view = 4;
+                          });
+                        },
+                      )
               ],
       ),
       body: con.chooseBody(view),
@@ -108,18 +116,13 @@ class _HomeScreen extends State<HomeScreen> {
                   recogs.map((e) {
                     var r = e["detectedClass"];
                     objects.add(r);
-                    //print(r.toString());
                   }).toList();
                   con.imageRecognitions.add(objects);
-                  print("View " + view.toString() + " has " + con.imageRecognitions.elementAt(view).toString() + " recognitions");
-                  //con.recognitions.add(recogs.elementAt(0));
+                  //print("View " + view.toString() + " has " + con.imageRecognitions.elementAt(view).toString() + " recognitions");
+                  //Map<String, String> pic = await con.addPicToStorage(image: File(image.path));
                   setState(() {
-                    //ximageFile.add(image);
                     view += 1;
                     print(view);
-                    //imageAlign = con.normalize(offset.dx, offset.dy);
-                    //imageOffset = offset;
-                    //offset = Offset(0, 100);
                   });
                 });
               },
@@ -142,11 +145,148 @@ class _Controller {
     if (view < 4) {
       return camera(view);
     } else if (view == 4) {
-      return arView();
-    } else
       return Container(
-        child: Text("Paused"),
+        width: MediaQuery.of(_state.context).size.width,
+        height: MediaQuery.of(_state.context).size.height,
+        child: Column(
+          children: [
+            Text(
+              "Paused",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.underline),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "This is a page for pausing the AR display and also for providing information",
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Text(
+              "Quick info",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.underline),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "The pictures you just took have been saved and run through a machine learning model. The model scanned for common recognitions in the images and saved them to this app.",
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Text(
+              "How to use the app",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.underline),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                        text: "Click on the ",
+                        style: TextStyle(color: Colors.black)),
+                    WidgetSpan(child: Icon(Icons.play_arrow_rounded)),
+                    TextSpan(
+                        text:
+                            " in the top right corner to switch to the AR display, or when in the AR display to switch back to this screen.",
+                        style: TextStyle(color: Colors.black))
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "When the AR display is up, scan around on the ground to generate a grid to place AR objects on.",
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "After a grid generates, tap on the grid to place the AR display of the pictures taken. If you walk into the object you will see your pictures surrounding you in AR.",
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "If you tap on each picture, you will see a window pop up with objects the machine learning model recognized.",
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Text(
+              "Restarting",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.underline),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "If you pause after displaying the AR display, you will reset all objects placed down and grids generated.",
+              ),
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            Container(
+              alignment: Alignment.center,
+              width: MediaQuery.of(_state.context).size.width - 25,
+              child: Text(
+                "At this time pictures are instance only, so you must close and reopen the app to take new pictures and pictures are lost after closing the app. Saving environments to display is a work in progress.",
+              ),
+            ),
+          ],
+        ),
       );
+    } else
+      return arView();
   }
 
   Widget camera(int view) {
@@ -160,42 +300,29 @@ class _Controller {
         Positioned(
             top: _state.offset.dy - 90,
             left: _state.offset.dx,
-            child: Text("Picture " + view.toString() + " of 4", style: TextStyle(fontSize: 20, color: Colors.pink),)),
-        /*_state.ximageFile == null
-            ? Container()
-            : Positioned(
-                top: _state.imageOffset.dy - 90,
-                left: _state.imageOffset.dx,
-                child: Draggable(
-                    childWhenDragging: Container(),
-                    child: Container(
-                      clipBehavior: Clip.hardEdge,
-                      height: 150,
-                      width: 150,
-                      decoration: BoxDecoration(
-                          image: DecorationImage(
-                              scale: 2,
-                              fit: BoxFit.none,
-                              alignment: _state.imageAlign,
-                              image: FileImage(File(_state.ximageFile.path)))),
+            child: Column(
+              children: [
+                Container(
+                    width: MediaQuery.of(_state.context).size.width,
+                    child: Text(
+                      "Take 4 pictures of your surrounding to display in AR",
+                      style: TextStyle(fontSize: 14, color: Colors.white),
+                      softWrap: true,
+                      textAlign: TextAlign.center,
+                    )),
+                Container(
+                  width: MediaQuery.of(_state.context).size.width,
+                  child: Text(
+                    "Picture " + view.toString() + " of 4",
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: Colors.white,
                     ),
-                    feedback: Container(
-                      height: 150,
-                      width: 150,
-                      decoration: BoxDecoration(
-                          image: DecorationImage(
-                              scale: 2,
-                              fit: BoxFit.none,
-                              alignment: _state.imageAlign,
-                              image: FileImage(File(_state.ximageFile.path)))),
-                    ),
-                    onDragEnd: (drag) {
-                      _state.setState(() {
-                        _state.imageOffset = drag.offset;
-                        print(drag.offset);
-                      });
-                    }),
-              )*/
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            )),
       ],
     );
   }
@@ -218,23 +345,13 @@ class _Controller {
     showDialog(
         context: _state.context,
         builder: (BuildContext context) => AlertDialog(
-              content: Text("node tapped with $name"),
+              content: Text("The model detected $name in this picture"),
             ));
   }
 
   void _displayImage(List<ArCoreHitTestResult> hits) {
     print("===========================HIT===============================");
     final hit = hits.first;
-    
-    /*inal material = ArCoreMaterial(
-      color: Color.fromARGB(120, 66, 134, 244),
-      roughness: 1,
-      metallic: 1.0,
-    );
-    final sphere = ArCoreSphere(
-      materials: [material],
-      radius: 1,
-    );*/
 
     final image =
         ArCoreImage(bytes: bytes.elementAt(0), height: 800, width: 800); //front
@@ -244,14 +361,6 @@ class _Controller {
         ArCoreImage(bytes: bytes.elementAt(2), height: 800, width: 800); //back
     final image4 =
         ArCoreImage(bytes: bytes.elementAt(3), height: 800, width: 800); //left
-
-    /*final node5 = ArCoreRotatingNode(
-        shape: sphere,
-        rotation: vector.Vector4(0, 0, 90, -90),
-        name: imageRecognitions.elementAt(0).toString(),
-        degreesPerSecond: 1,
-        position: hit.pose.translation
-        );*/
 
     final node = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, -90),
@@ -284,13 +393,14 @@ class _Controller {
     arController.addArCoreNode(node3);
   }
 
-  Alignment normalize(x, y) {
-    x = (x - 100) / 100;
-    x = x.toDouble();
-    print("X = " + x.toString());
-    y = (y - 335) / 235;
-    y = y.toDouble();
-    print("Y = " + y.toString());
-    return Alignment(x, y);
+  Future<Map<String, String>> addPicToStorage({@required File image}) async {
+    print("Start add Pic to Storage");
+    String filePath = "pics/${DateTime.now()}";
+    UploadTask task =
+        FirebaseStorage.instance.ref().child(filePath).putFile(image);
+
+    var download = task.snapshot;
+    var url = await download.ref.getDownloadURL();
+    return {"url": url, "path": filePath};
   }
 }
