@@ -203,7 +203,6 @@ class _Controller {
       return SingleChildScrollView(
         child: Container(
           width: MediaQuery.of(_state.context).size.width,
-          height: MediaQuery.of(_state.context).size.height,
           child: Column(
             children: [
               Text(
@@ -242,7 +241,7 @@ class _Controller {
                 alignment: Alignment.center,
                 width: MediaQuery.of(_state.context).size.width - 25,
                 child: Text(
-                  "The pictures you just took have been saved and run through a machine learning model. The model scanned for common recognitions in the images and saved them to this app.",
+                  "If you just took pictures, they have been captured and run through a machine learning model. The model scanned for common recognitions in the images and uploaded them to a database.",
                 ),
               ),
               SizedBox(
@@ -255,6 +254,27 @@ class _Controller {
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                     decoration: TextDecoration.underline),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                          text: "Click on the ",
+                          style: TextStyle(color: Colors.black)),
+                      WidgetSpan(child: Icon(Icons.image)),
+                      TextSpan(
+                          text:
+                              " in the top right corner to switch to the environment select screen. There you can select the items to load sets of pictures, where you can launch from here.",
+                          style: TextStyle(color: Colors.black))
+                    ],
+                  ),
+                ),
               ),
               SizedBox(
                 height: 10,
@@ -335,7 +355,28 @@ class _Controller {
                 alignment: Alignment.center,
                 width: MediaQuery.of(_state.context).size.width - 25,
                 child: Text(
-                  "At this time pictures are instance only, so you must close and reopen the app to take new pictures and pictures are lost after closing the app. Saving environments to display is a work in progress.",
+                  "The only time to add pictures is on the app startup, so if you want to add new environments you have to restart the app. Don't worry, all environments are backed up by a database, so you won't lose your old pictures.",
+                ),
+              ),
+               SizedBox(
+                height: 10,
+              ),
+              Text(
+                "DISCLAIMER",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "Environments come in sets of 4 pictures, so if you start taking pictures, take all 4. Interrupts in the image capture process will result in failed database grouping.",
                 ),
               ),
             ],
@@ -423,6 +464,9 @@ class _Controller {
     bytes = newBytes;
     print("New env loaded");
     Navigator.pop(_state.context);
+    _state.setState(() {
+      _state.view = 4;
+    });
   }
 
   Widget arView() {
