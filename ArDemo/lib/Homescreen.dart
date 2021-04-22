@@ -1,14 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:ArDemo/FirebaseController.dart';
 import 'package:arcore_flutter_plugin/arcore_flutter_plugin.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
 import 'package:tflite/tflite.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'models/picture.dart';
+import 'package:http/http.dart' as http;
 
 const String ssd = "SSDMobileNet";
 
@@ -31,12 +31,14 @@ class _HomeScreen extends State<HomeScreen> {
   _Controller con;
   CameraController controller;
   Offset offset = Offset(0, 100);
+  int groupCount;
 
   @override
   void initState() {
     super.initState();
     view = 0;
     con = _Controller(this);
+    FirebaseController.initializeFlutterFire();
 
     loadModel();
 
@@ -69,6 +71,10 @@ class _HomeScreen extends State<HomeScreen> {
     print("Model loaded, returned $model");
   }
 
+  getCount() async {
+    groupCount = await FirebaseController.getCount();
+  }
+
   //basic homescreen, no functionality as of now
   @override
   Widget build(BuildContext context) {
@@ -77,31 +83,60 @@ class _HomeScreen extends State<HomeScreen> {
       appBar: AppBar(
         title: Text("ARC&TFL"),
         actions: view < 4
-            ? [Container()]
-            : <Widget>[
-                view == 4
-                    ? IconButton(
-                        icon: Icon(Icons.play_arrow_rounded),
-                        onPressed: () {
-                          setState(() {
-                            view = 5;
-                          });
-                        },
-                      )
-                    : IconButton(
-                        icon: Icon(Icons.pause),
-                        onPressed: () {
-                          setState(() {
-                            view = 4;
-                          });
-                        },
-                      )
-              ],
+            ? <Widget>[
+                Text("Skip pics"),
+                IconButton(
+                  icon: Icon(Icons.arrow_forward),
+                  onPressed: () async {
+                    groupCount = await FirebaseController.getCount();
+                    setState(() {
+                      view = 6;
+                    });
+                  },
+                ),
+              ]
+            : view == 4
+                ? <Widget>[
+                    IconButton(
+                      icon: Icon(Icons.photo),
+                      onPressed: () {
+                        setState(() {
+                          view = 6;
+                        });
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.play_arrow_rounded),
+                      onPressed: () {
+                        setState(() {
+                          view = 5;
+                        });
+                      },
+                    )
+                  ]
+                : <Widget>[
+                    IconButton(
+                      icon: view == 6 ? Icon(Icons.note) : Icon(Icons.pause),
+                      onPressed: () {
+                        setState(() {
+                          view = 4;
+                        });
+                      },
+                    )
+                  ],
       ),
       body: con.chooseBody(view),
       floatingActionButton: view < 4
           ? FloatingActionButton(
               onPressed: () async {
+                showDialog(
+                    context: context,
+                    builder: (context) =>
+                        Center(child: CircularProgressIndicator()));
+                if (view == 0) {
+                  print("Get starting count");
+                  groupCount = await FirebaseController.getCount();
+                }
                 controller.takePicture().then((XFile image) async {
                   print(
                       "==============================================================");
@@ -117,9 +152,28 @@ class _HomeScreen extends State<HomeScreen> {
                     var r = e["detectedClass"];
                     objects.add(r);
                   }).toList();
-                  con.imageRecognitions.add(objects);
+
+                  con.stringRecogs.add(objects.toString());
+                  //con.imageRecognitions.add(objects);
                   //print("View " + view.toString() + " has " + con.imageRecognitions.elementAt(view).toString() + " recognitions");
-                  //Map<String, String> pic = await con.addPicToStorage(image: File(image.path));
+                  Map<String, String> pic =
+                      await FirebaseController.addPicToStorage(
+                          image: File(image.path));
+                  Picture p = new Picture(
+                    photoURL: pic["url"],
+                    photoPath: pic["path"],
+                    timestamp: DateTime.now(),
+                    groupId: "group" + groupCount.toString(),
+                    recogs: objects.toString(),
+                  );
+                  p.docId = await FirebaseController.addPicToVault(p);
+
+                  if (view == 3) {
+                    groupCount++;
+                    await FirebaseController.updateCount(groupCount);
+                  }
+                  Navigator.pop(context);
+                  //print(pic);
                   setState(() {
                     view += 1;
                     print(view);
@@ -139,154 +193,175 @@ class _Controller {
 
   List<Uint8List> bytes = [];
   List<List<dynamic>> imageRecognitions = [];
+  List<String> stringRecogs = [];
   ArCoreController arController;
 
   Widget chooseBody(int view) {
     if (view < 4) {
       return camera(view);
     } else if (view == 4) {
-      return Container(
-        width: MediaQuery.of(_state.context).size.width,
-        height: MediaQuery.of(_state.context).size.height,
-        child: Column(
-          children: [
-            Text(
-              "Paused",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.underline),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "This is a page for pausing the AR display and also for providing information",
+      return SingleChildScrollView(
+        child: Container(
+          width: MediaQuery.of(_state.context).size.width,
+          height: MediaQuery.of(_state.context).size.height,
+          child: Column(
+            children: [
+              Text(
+                "Paused",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline),
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Text(
-              "Quick info",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.underline),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "The pictures you just took have been saved and run through a machine learning model. The model scanned for common recognitions in the images and saved them to this app.",
+              SizedBox(
+                height: 10,
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Text(
-              "How to use the app",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.underline),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: RichText(
-                text: TextSpan(
-                  children: [
-                    TextSpan(
-                        text: "Click on the ",
-                        style: TextStyle(color: Colors.black)),
-                    WidgetSpan(child: Icon(Icons.play_arrow_rounded)),
-                    TextSpan(
-                        text:
-                            " in the top right corner to switch to the AR display, or when in the AR display to switch back to this screen.",
-                        style: TextStyle(color: Colors.black))
-                  ],
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "This is a page for pausing the AR display and also for providing information",
                 ),
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "When the AR display is up, scan around on the ground to generate a grid to place AR objects on.",
+              SizedBox(
+                height: 10,
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "After a grid generates, tap on the grid to place the AR display of the pictures taken. If you walk into the object you will see your pictures surrounding you in AR.",
+              Text(
+                "Quick info",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline),
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "If you tap on each picture, you will see a window pop up with objects the machine learning model recognized.",
+              SizedBox(
+                height: 10,
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Text(
-              "Restarting",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.underline),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "If you pause after displaying the AR display, you will reset all objects placed down and grids generated.",
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "The pictures you just took have been saved and run through a machine learning model. The model scanned for common recognitions in the images and saved them to this app.",
+                ),
               ),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Container(
-              alignment: Alignment.center,
-              width: MediaQuery.of(_state.context).size.width - 25,
-              child: Text(
-                "At this time pictures are instance only, so you must close and reopen the app to take new pictures and pictures are lost after closing the app. Saving environments to display is a work in progress.",
+              SizedBox(
+                height: 10,
               ),
-            ),
-          ],
+              Text(
+                "How to use the app",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                          text: "Click on the ",
+                          style: TextStyle(color: Colors.black)),
+                      WidgetSpan(child: Icon(Icons.play_arrow_rounded)),
+                      TextSpan(
+                          text:
+                              " in the top right corner to switch to the AR display, or when in the AR display to switch back to this screen.",
+                          style: TextStyle(color: Colors.black))
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "When the AR display is up, scan around on the ground to generate a grid to place AR objects on.",
+                ),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "After a grid generates, tap on the grid to place the AR display of the pictures taken. If you walk into the object you will see your pictures surrounding you in AR.",
+                ),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "If you tap on each picture, you will see a window pop up with objects the machine learning model recognized.",
+                ),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Text(
+                "Restarting",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "If you pause after displaying the AR display, you will reset all objects placed down and grids generated.",
+                ),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(_state.context).size.width - 25,
+                child: Text(
+                  "At this time pictures are instance only, so you must close and reopen the app to take new pictures and pictures are lost after closing the app. Saving environments to display is a work in progress.",
+                ),
+              ),
+            ],
+          ),
         ),
       );
-    } else
+    } else if (view == 6) {
+      return ListView.builder(
+          itemCount: _state.groupCount,
+          itemBuilder: (BuildContext context, int index) {
+            return Card(
+              child: ListTile(
+                contentPadding: EdgeInsets.all(10),
+                title: Text("Group" + index.toString()),
+                trailing: SizedBox(
+                  height: 10,
+                ),
+                onTap: () {
+                  loadEnv(index);
+                },
+              ),
+            );
+          });
+    } else {
       return arView();
+    }
   }
 
   Widget camera(int view) {
@@ -327,6 +402,29 @@ class _Controller {
     );
   }
 
+  loadEnv(int index) async {
+    showDialog(
+        context: _state.context,
+        builder: (context) => Center(child: CircularProgressIndicator()));
+    print("Selected " + index.toString());
+    String searchKey = "group" + index.toString();
+    List<Map<String, String>> pics;
+    stringRecogs = [];
+
+    List<Uint8List> newBytes = [];
+    pics = await FirebaseController.getPics(searchKey);
+    pics.forEach((pic) async {
+      Uri uri = Uri.parse(pic.keys.first);
+      Uint8List byte = await http.readBytes(uri);
+
+      newBytes.add(byte);
+      stringRecogs.add(pic.values.first);
+    });
+    bytes = newBytes;
+    print("New env loaded");
+    Navigator.pop(_state.context);
+  }
+
   Widget arView() {
     return ArCoreView(
       onArCoreViewCreated: _arCoreView,
@@ -353,6 +451,14 @@ class _Controller {
     print("===========================HIT===============================");
     final hit = hits.first;
 
+    if (bytes.length == 0) {
+      showDialog(
+          context: _state.context,
+          builder: (BuildContext context) => AlertDialog(
+                content: Text("Please select an environment"),
+              ));
+    }
+
     final image =
         ArCoreImage(bytes: bytes.elementAt(0), height: 800, width: 800); //front
     final image2 =
@@ -365,23 +471,23 @@ class _Controller {
     final node = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, -90),
       image: image, //node front
-      name: imageRecognitions.elementAt(0).toString(),
+      name: stringRecogs.elementAt(0),
       position: hit.pose.translation + vector.Vector3(-0.5, 1, -1),
     );
     final node1 = ArCoreNode(
       rotation: vector.Vector4(0, 0, 90, 90),
       image: image3, //node1 back
-      name: imageRecognitions.elementAt(2).toString(),
+      name: stringRecogs.elementAt(2),
       position: hit.pose.translation + vector.Vector3(0.8, 1, 0.30),
     );
     final node2 = ArCoreNode(
       rotation: vector.Vector4(90, 90, 90, 90),
       image: image2, //node2 right
-      name: imageRecognitions.elementAt(1).toString(),
+      name: stringRecogs.elementAt(1),
       position: hit.pose.translation + vector.Vector3(0.8, 1, -1),
     );
     final node3 = ArCoreNode(
-      name: imageRecognitions.elementAt(3).toString(),
+      name: stringRecogs.elementAt(3),
       rotation: vector.Vector4(90, 90, -90, -90),
       image: image4, //node3 left
       position: hit.pose.translation + vector.Vector3(-0.5, 1, 0.30),
@@ -391,16 +497,5 @@ class _Controller {
     arController.addArCoreNode(node1);
     arController.addArCoreNode(node2);
     arController.addArCoreNode(node3);
-  }
-
-  Future<Map<String, String>> addPicToStorage({@required File image}) async {
-    print("Start add Pic to Storage");
-    String filePath = "pics/${DateTime.now()}";
-    UploadTask task =
-        FirebaseStorage.instance.ref().child(filePath).putFile(image);
-
-    var download = task.snapshot;
-    var url = await download.ref.getDownloadURL();
-    return {"url": url, "path": filePath};
   }
 }
